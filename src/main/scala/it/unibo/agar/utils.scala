@@ -6,13 +6,9 @@ import com.typesafe.config.ConfigFactory
 
 val seeds = List(2551, 2552) // seed used in the configuration
 
+//funzione che consente ad Akka di configurare ed interpretare gli attori su due porte diverse, come se fossero in remoto
 def startup[X](file: String = "base-cluster", port: Int)(root: => Behavior[X]): ActorSystem[X] =
-  // Override the configuration of the port
-  val config = ConfigFactory
-    .parseString(s"""akka.remote.artery.canonical.port=$port""")
-    .withFallback(ConfigFactory.load(file))
-
-  // Create an Akka system
+  val config = ConfigFactory.parseString(s"""akka.remote.artery.canonical.port=$port""").withFallback(ConfigFactory.load(file))
   ActorSystem(root, file, config)
 
 def startupWithRole[X](role: String, port: Int)(root: => Behavior[X]): ActorSystem[X] =
