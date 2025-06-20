@@ -3,16 +3,16 @@ package it.unibo.agar.distributed.controller
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
 import akka.actor.typed.receptionist.{Receptionist, ServiceKey}
-import it.unibo.agar.distributed.controller.PlayerCommand.{ConnectPlayerToGameMaster, Ignore}
-import it.unibo.agar.distributed.controller.ViewAdapterCommand.ConnectViewToGameMaster
-import it.unibo.agar.distributed.model.{GameInitializer, GameMasterActor, Player, World}
+import it.unibo.agar.distributed.controller.PlayerCommand.{ConnectPlayerToGameManager, Ignore}
+import it.unibo.agar.distributed.controller.ViewAdapterCommand.ConnectViewToGameManager
+import it.unibo.agar.distributed.model.{GameInitializer, GameManagerActor, Player, World}
 import it.unibo.agar.distributed.view.{GlobalView, LocalView}
 import it.unibo.agar.startup
 import scala.concurrent.ExecutionContext.Implicits.global
 
 // service key per Receptionist
-object GameMasterKey:
-  val Key: ServiceKey[GameMasterCommand] = ServiceKey[GameMasterCommand]("GameMaster")
+object GameManagerKey:
+  val Key: ServiceKey[GameManagerCommand] = ServiceKey[GameManagerCommand]("GameMaster")
 
 object Main:
   private val width = 800
@@ -21,20 +21,22 @@ object Main:
   private val foods = GameInitializer.initialFoods(numFoods, width, height)
   private val initialWorld = World(width, height, Seq.empty, foods)
 
-  /** Nodo GameMasterActor, su porta 25251 */
+  /** Nodo GameManagerActor, su porta 25251 */
   @main def startGameMaster(): Unit =
     val system = startup("agario", 25251):
-      Behaviors.setup[GameMasterCommand]: context =>
-        val gameMaster = context.spawn(GameMasterActor(initialWorld), "GameMaster")
-        context.system.receptionist ! Receptionist.Register(GameMasterKey.Key, gameMaster)
+      Behaviors.setup[GameManagerCommand]: context =>
+        val foodGenerator = context.spawn(FoodGeneratorActor(initialWorld.width, initialWorld.height), "FoodGenerator")
+        val collisionManager = context.spawn(CollisionManagerActor(), "CollisionManager")
+        val gameManager = context.spawn(GameManagerActor(initialWorld, foodGenerator, collisionManager), "GameManager")
+        context.system.receptionist ! Receptionist.Register(GameManagerKey.Key, gameManager)
         val globalView = new GlobalView()
-        val globalViewActor = context.spawn(GlobalViewAdapterActor(gameMaster, globalView), "GlobalViewAdapter")
+        val globalViewActor = context.spawn(GlobalViewAdapterActor(gameManager, globalView), "GlobalViewAdapter")
         globalView.setGlobalViewActor(globalViewActor)
         javax.swing.SwingUtilities.invokeLater(() => globalView.open())
-        println("GameMasterActor created and registered.")
-        Behaviors.receiveMessagePartial[GameMasterCommand] { _ => Behaviors.same }
+        println("GameManagerActor created and registered.")
+        Behaviors.receiveMessagePartial[GameManagerCommand] { _ => Behaviors.same }
     
-    println("GameMasterActor started on port 25251")
+    println("GameManagerActor started on port 25251")
     system.whenTerminated.onComplete(_ => System.exit(0))
 
   /** Nodo PlayerActor, su porta 25252 */
@@ -55,13 +57,13 @@ object Main:
     println("Player2 started on port 25253")
     system.whenTerminated.onComplete(_ => System.exit(0))
 
-  def connected(gameMasterRef: ActorRef[GameMasterCommand]): Behavior[PlayerCommand | ResolveGameMaster] =
+  private def connected(gameManagerRef: ActorRef[GameManagerCommand]): Behavior[PlayerCommand | ResolveGameManager] =
     Behaviors.receiveMessage:
       case msg =>
         Behaviors.same
 
   /** Comportamento comune a tutti i player */
-  def playerNodeBehavior(playerData: Player, width: Int, height: Int): Behavior[PlayerCommand | ResolveGameMaster] =
+  private def playerNodeBehavior(playerData: Player, width: Int, height: Int): Behavior[PlayerCommand | ResolveGameManager] =
     Behaviors.setup: context =>
       val playerActor = context.spawn(PlayerActor(playerData.id, playerData, width, height), s"PlayerActor-${playerData.id}")
       val localView = new LocalView(playerActor, playerData.id)
@@ -70,22 +72,22 @@ object Main:
 
       // adapter per convertire Receptionist.Listing in messaggi ResolveGameMaster(set.head) e Ignore
       val listingAdapter = context.messageAdapter[Receptionist.Listing]:
-        case GameMasterKey.Key.Listing(set) if set.nonEmpty =>
-          println(s"GameMaster found: $set")
-          ResolveGameMaster(set.head)
+        case GameManagerKey.Key.Listing(set) if set.nonEmpty =>
+          println(s"GameManager found: $set")
+          ResolveGameManager(set.head)
         case _ =>
-          println("GameMaster not found.")
+          println("GameManager not found.")
           Ignore
 
       //invio un messaggio al receptionist per cerca il GameMaster
-      context.system.receptionist ! Receptionist.Subscribe(GameMasterKey.Key, listingAdapter)
+      context.system.receptionist ! Receptionist.Subscribe(GameManagerKey.Key, listingAdapter)
 
       Behaviors.receiveMessage:
-        case ResolveGameMaster(gameMasterRef) =>
-          println("GameMaster resolved.")
-          playerActor ! ConnectPlayerToGameMaster(gameMasterRef)
-          localViewAdapter ! ConnectViewToGameMaster(gameMasterRef)
-          connected(gameMasterRef) // Cambio comportamento dopo aver risolto
+        case ResolveGameManager(gameManagerRef) =>
+          println("GameManager resolved.")
+          playerActor ! ConnectPlayerToGameManager(gameManagerRef)
+          localViewAdapter ! ConnectViewToGameManager(gameManagerRef)
+          connected(gameManagerRef) // Cambio comportamento dopo aver risolto
         case Ignore =>
           Behaviors.same
 

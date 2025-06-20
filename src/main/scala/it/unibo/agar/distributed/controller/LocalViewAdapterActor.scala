@@ -2,28 +2,28 @@ package it.unibo.agar.distributed.controller
 
 import akka.actor.typed.{ActorRef, Behavior}
 import akka.actor.typed.scaladsl.Behaviors
-import it.unibo.agar.distributed.controller.GameMasterCommand.Subscribe
-import it.unibo.agar.distributed.controller.ViewAdapterCommand.ConnectViewToGameMaster
+import it.unibo.agar.distributed.controller.GameManagerCommand.Subscribe
+import it.unibo.agar.distributed.controller.ViewAdapterCommand.ConnectViewToGameManager
 import it.unibo.agar.distributed.controller.ViewAdapterCommand.{ShutdownNotify, UpdateWorldState, GameOver}
 import it.unibo.agar.distributed.view.LocalView
 
 object LocalViewAdapterActor:
 
-  def apply(gameMaster: ActorRef[GameMasterCommand], localView: LocalView): Behavior[ViewAdapterCommand | ConnectViewToGameMaster] =
-    if (gameMaster == null)
-      waitingForGameMaster(localView)
+  def apply(gameManager: ActorRef[GameManagerCommand], localView: LocalView): Behavior[ViewAdapterCommand | ConnectViewToGameManager] =
+    if (gameManager == null)
+      waitingForGameManager(localView)
     else
-      active(gameMaster, localView)
+      active(gameManager, localView)
 
-  def waitingForGameMaster(localView: LocalView): Behavior[ConnectViewToGameMaster | ViewAdapterCommand] =
+  private def waitingForGameManager(localView: LocalView): Behavior[ConnectViewToGameManager | ViewAdapterCommand] =
     Behaviors.setup: context =>
       Behaviors.receive: (context, message) =>
         message match
-          case ConnectViewToGameMaster(gameMaster) =>
-            gameMaster ! Subscribe(context.self)
-            active(gameMaster, localView)
+          case ConnectViewToGameManager(gameManager) =>
+            gameManager ! Subscribe(context.self)
+            active(gameManager, localView)
   
-  def active(gameMaster: ActorRef[GameMasterCommand], localView: LocalView): Behavior[ViewAdapterCommand] =
+  def active(gameMaster: ActorRef[GameManagerCommand], localView: LocalView): Behavior[ViewAdapterCommand] =
     Behaviors.receive: (context, message) =>
       message match
         case UpdateWorldState(world) =>
