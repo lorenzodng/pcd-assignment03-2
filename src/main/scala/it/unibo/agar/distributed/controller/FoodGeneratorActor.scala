@@ -8,6 +8,8 @@ import scala.concurrent.duration.*
 import it.unibo.agar.distributed.model.Food
 
 object FoodGeneratorActor:
+  private val FOOD_AMOUNT = 20
+  private val FOOD_FREQUENCY = 3
 
   def apply(worldWidth: Double, worldHeight: Double): Behavior[FoodGeneratorCommand] =
     Behaviors.setup: context =>
@@ -18,7 +20,7 @@ object FoodGeneratorActor:
           (1 to foodCount).map: _ =>
             Food(java.util.UUID.randomUUID().toString, Math.random() * worldWidth, Math.random() * worldHeight)
 
-        timers.startTimerWithFixedDelay(GenerateFood(20), 3.seconds) //ogni 3 secondi, invio nuovamente il messaggio a questo attore
+        timers.startTimerWithFixedDelay(GenerateFood(FOOD_AMOUNT), FOOD_FREQUENCY.seconds) //ogni 3 secondi, invio nuovamente il messaggio a questo attore
 
         Behaviors.receiveMessage:
           case SubscribeGameManager(gameManager) =>

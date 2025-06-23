@@ -12,6 +12,7 @@ import it.unibo.agar.distributed.controller.{CollisionManagerCommand, FoodGenera
 import scala.collection.mutable
 
 object GameManagerActor:
+  private val WINNING_MASS = 10000
 
   def apply(world: World, foodGenerator: ActorRef[FoodGeneratorCommand], collisionManager: ActorRef[CollisionManagerCommand], speed: Double = 10.0, tickIntervalMillis: Long = 30): Behavior[GameManagerCommand] =
     Behaviors.setup: context =>
@@ -37,7 +38,7 @@ object GameManagerActor:
           currentWorld = updatedWorld
           subscribers.foreach(_ ! UpdateWorldState(updatedWorld))
           players.get(updatedPlayer.id).foreach(_ ! PlayerUpdated(updatedPlayer))
-          updatedWorld.players.find(_.mass >= 10000) match
+          updatedWorld.players.find(_.mass >= WINNING_MASS) match
             case Some(winner) =>
               subscribers.foreach(_ ! GameOver(winner))
               context.system.terminate()
@@ -51,7 +52,8 @@ object GameManagerActor:
         case Join(playerId, playerRef) =>
           context.log.info(s"Player $playerId joined the game.")
           players.put(playerId, playerRef)
-          val newPlayer = Player(playerId, Math.random() * currentWorld.width, Math.random() * currentWorld.height, 120.0)
+          val mass = 120
+          val newPlayer = Player(playerId, Math.random() * currentWorld.width, Math.random() * currentWorld.height, mass)
           currentWorld = currentWorld.addPlayer(newPlayer)
           playerRef ! PlayerUpdated(newPlayer)
           subscribers.foreach(_ ! UpdateWorldState(currentWorld))
